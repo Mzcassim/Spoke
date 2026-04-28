@@ -315,6 +315,41 @@ app.get('/api/guests', (req, res) => {
   res.json(stmts.allGuests.all());
 });
 
+// --- API: Full DB backup (admin) ---
+app.get('/api/backup', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const guests = stmts.allGuests.all();
+  const connections = stmts.allConnections.all();
+  const events = stmts.allEvents.all();
+
+  const backup = {
+    exported_at: new Date().toISOString(),
+    guests,
+    connections,
+    events,
+  };
+
+  res.setHeader('Content-Disposition', 'attachment; filename="spoke_backup.json"');
+  res.json(backup);
+});
+
+// --- Periodic DB snapshot to console (every 5 min) ---
+setInterval(() => {
+  const guests = stmts.allGuests.all();
+  const connections = stmts.allConnections.all();
+  if (guests.length === 0 && connections.length === 0) return;
+
+  const snapshot = {
+    timestamp: new Date().toISOString(),
+    guests,
+    connections,
+  };
+  console.log('--- DB SNAPSHOT ---');
+  console.log(JSON.stringify(snapshot));
+  console.log('--- END SNAPSHOT ---');
+}, 5 * 60 * 1000);
+
 // --- Start server ---
 server.listen(PORT, () => {
   console.log(`Spoke server running on port ${PORT}`);
