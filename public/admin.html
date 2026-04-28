@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin — Spoke</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0a;color:#f0ede6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:32px 24px;max-width:720px;margin:0 auto}
+h1{font-size:22px;font-weight:600;margin-bottom:24px}
+h2{font-size:16px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:1px;margin:32px 0 12px}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px}
+.stat{background:#111;border-radius:10px;padding:16px}
+.stat .label{font-size:12px;color:#666;margin-bottom:4px}
+.stat .value{font-size:24px;font-weight:600}
+.stat.wide{grid-column:1/-1}
+.stat .value.small{font-size:14px;font-weight:400;color:#999}
+.btn-row{display:flex;gap:10px;margin-bottom:8px}
+.btn{background:#1a1a1a;border:1px solid #333;color:#f0ede6;font-size:14px;padding:12px 20px;border-radius:8px;cursor:pointer;transition:background 0.2s;flex:1;text-align:center}
+.btn:hover{background:#222}
+.btn.primary{background:#f0ede6;color:#0a0a0a;border-color:#f0ede6}
+.btn.primary:hover{background:#ddd}
+select{width:100%;background:#111;border:1px solid #222;color:#f0ede6;font-size:14px;padding:12px;border-radius:8px;margin-bottom:16px;appearance:none;-webkit-appearance:none}
+.recap-card{background:#111;border-radius:10px;padding:20px;margin-bottom:12px;display:none}
+.recap-card.visible{display:block}
+.recap-card h3{font-size:16px;margin-bottom:4px}
+.recap-card .email{font-size:13px;color:#888;margin-bottom:12px}
+.recap-card ul{list-style:none;padding:0}
+.recap-card li{font-size:14px;padding:4px 0;color:#ccc}
+.recap-card li span{color:#666}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#222;color:#f0ede6;padding:10px 20px;border-radius:8px;font-size:13px;opacity:0;transition:opacity 0.3s;pointer-events:none}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<h1>Admin</h1>
+
+<h2>Stats</h2>
+<div class="stat-grid" id="statsGrid">
+  <div class="stat"><div class="label">Total Guests</div><div class="value" id="statGuests">—</div></div>
+  <div class="stat"><div class="label">Total Connections</div><div class="value" id="statConns">—</div></div>
+  <div class="stat wide"><div class="label">Most Connected</div><div class="value" id="statMost">—</div></div>
+  <div class="stat"><div class="label">First Connection</div><div class="value small" id="statFirst">—</div></div>
+  <div class="stat"><div class="label">Last Connection</div><div class="value small" id="statLast">—</div></div>
+</div>
+
+<h2>Export</h2>
+<div class="btn-row">
+  <button class="btn" id="btnJSON">Download JSON</button>
+  <button class="btn" id="btnCSV">Download CSV</button>
+</div>
+
+<h2>Recap Preview</h2>
+<select id="guestSelect"><option value="">Select a guest…</option></select>
+<div class="recap-card" id="recapCard">
+  <h3 id="recapName"></h3>
+  <div class="email" id="recapEmail"></div>
+  <ul id="recapList"></ul>
+  <div style="margin-top:12px">
+    <button class="btn" id="btnCopyRecap">Copy recap text</button>
+  </div>
+</div>
+
+<div style="margin-top:8px">
+  <button class="btn primary" id="btnCopyAll">Copy all recaps</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  var token = new URLSearchParams(window.location.search).get('token');
+  var EVENT_NAME = 'Gala 2025';
+  var allGuests = [];
+
+  function toast(msg) {
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(function(){ el.classList.remove('show'); }, 2000);
+  }
+
+  function formatTS(ts) {
+    if (!ts) return '—';
+    var d = new Date(ts);
+    return d.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+  }
+
+  function roleLabel(r) {
+    var map = {vc:'VC / Investor', founder:'Founder', member:'Club Member', guest:'Guest / Mentor'};
+    return map[r] || r;
+  }
+
+  // Load stats
+  fetch('/api/stats?token=' + token)
+    .then(function(r){ return r.json(); })
+    .then(function(s){
+      document.getElementById('statGuests').textContent = s.total_guests;
+      document.getElementById('statConns').textContent = s.total_connections;
+      document.getElementById('statMost').textContent = s.most_connected ? s.most_connected.name + ' (' + s.most_connected.count + ')' : 'None yet';
+      document.getElementById('statFirst').textContent = formatTS(s.first_connection);
+      document.getElementById('statLast').textContent = formatTS(s.last_connection);
+    });
+
+  // Load guests for dropdown
+  fetch('/api/guests?token=' + token)
+    .then(function(r){ return r.json(); })
+    .then(function(guests){
+      allGuests = guests;
+      var sel = document.getElementById('guestSelect');
+      guests.forEach(function(g){
+        var opt = document.createElement('option');
+        opt.value = g.wristband_id;
+        opt.textContent = g.name + ' (' + g.wristband_id + ')';
+        sel.appendChild(opt);
+      });
+    });
+
+  // Guest select -> load recap
+  document.getElementById('guestSelect').addEventListener('change', function(){
+    var id = this.value;
+    var card = document.getElementById('recapCard');
+    if (!id) { card.classList.remove('visible'); return; }
+
+    fetch('/api/guest/' + id + '/connections?token=' + token)
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (!data.success) return;
+        document.getElementById('recapName').textContent = data.guest.name;
+        document.getElementById('recapEmail').textContent = data.guest.email;
+        var list = document.getElementById('recapList');
+        list.innerHTML = '';
+        data.connections.forEach(function(c){
+          var li = document.createElement('li');
+          li.innerHTML = c.name + ' <span>(' + roleLabel(c.role) + ') — ' + c.email + '</span>';
+          list.appendChild(li);
+        });
+        if (data.connections.length === 0) {
+          list.innerHTML = '<li style="color:#555">No connections yet</li>';
+        }
+        card.classList.add('visible');
+      });
+  });
+
+  // Build recap text for one guest
+  function buildRecap(guest, connections) {
+    var lines = 'Hi ' + guest.name + ',\n\n';
+    lines += 'Great to meet you at ' + EVENT_NAME + ' last night.\n\n';
+    lines += 'Here\'s who you connected with:\n\n';
+    connections.forEach(function(c){
+      lines += '- ' + c.name + ' (' + roleLabel(c.role) + ') — ' + c.email + '\n';
+    });
+    lines += '\n\n\n\n— [Your name]';
+    return lines;
+  }
+
+  // Copy single recap
+  document.getElementById('btnCopyRecap').addEventListener('click', function(){
+    var id = document.getElementById('guestSelect').value;
+    if (!id) return;
+    fetch('/api/guest/' + id + '/connections?token=' + token)
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (!data.success) return;
+        var text = buildRecap(data.guest, data.connections);
+        navigator.clipboard.writeText(text).then(function(){ toast('Recap copied!'); });
+      });
+  });
+
+  // Copy all recaps
+  document.getElementById('btnCopyAll').addEventListener('click', function(){
+    var promises = allGuests.map(function(g){
+      return fetch('/api/guest/' + g.wristband_id + '/connections?token=' + token)
+        .then(function(r){ return r.json(); });
+    });
+    Promise.all(promises).then(function(results){
+      var blocks = results.filter(function(d){ return d.success; }).map(function(d){
+        return buildRecap(d.guest, d.connections);
+      });
+      navigator.clipboard.writeText(blocks.join('\n---\n\n')).then(function(){
+        toast('All recaps copied! (' + blocks.length + ' guests)');
+      });
+    });
+  });
+
+  // Export buttons
+  document.getElementById('btnJSON').addEventListener('click', function(){
+    window.location.href = '/api/export?token=' + token + '&format=json';
+  });
+  document.getElementById('btnCSV').addEventListener('click', function(){
+    window.location.href = '/api/export?token=' + token + '&format=csv';
+  });
+})();
+</script>
+</body>
+</html>

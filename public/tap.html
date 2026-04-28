@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spoke</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0a;color:#f0ede6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;text-align:center}
+.container{max-width:360px;width:100%}
+h1{font-size:28px;font-weight:600;margin-bottom:12px}
+p{font-size:16px;color:#999;margin-bottom:8px}
+.names{font-size:22px;font-weight:500;margin:16px 0}
+.success-icon{width:60px;height:60px;border-radius:50%;border:3px solid #f0ede6;display:inline-flex;align-items:center;justify-content:center;font-size:28px;margin-bottom:20px;animation:popIn 0.4s ease}
+.already-icon{opacity:0.6}
+.error-msg{color:#ff6b6b}
+@keyframes popIn{0%{transform:scale(0);opacity:0}70%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.fade-in{animation:fadeIn 0.4s ease}
+.close-hint{font-size:13px;color:#555;margin-top:24px}
+.loading{font-size:14px;color:#666}
+</style>
+</head>
+<body data-wristband-id="__WRISTBAND_ID__">
+<div class="container" id="content">
+  <p class="loading">Connecting…</p>
+</div>
+<script>
+(function(){
+  var wristbandId = document.body.getAttribute('data-wristband-id');
+  var myId = localStorage.getItem('my_wristband_id');
+  var container = document.getElementById('content');
+
+  function show(html) {
+    container.innerHTML = html;
+    container.classList.add('fade-in');
+  }
+
+  // Not registered yet
+  if (!myId) {
+    window.location.href = '/register/' + wristbandId;
+    return;
+  }
+
+  // Tapped own wristband
+  if (myId === wristbandId) {
+    show(
+      '<div class="success-icon already-icon">👋</div>' +
+      '<h1>That\'s you!</h1>' +
+      '<p>Tap someone else\'s wristband to connect.</p>'
+    );
+    return;
+  }
+
+  // Tapped someone else — make connection
+  fetch('/api/connect', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ from_id: myId, to_id: wristbandId })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    if (!data.success) {
+      if (data.error && data.error.indexOf('not registered') !== -1) {
+        show(
+          '<h1>Not checked in yet</h1>' +
+          '<p>They haven\'t registered their wristband.<br>Come back after they check in!</p>'
+        );
+      } else {
+        show('<h1 class="error-msg">Something went wrong</h1><p>' + (data.error || 'Try again.') + '</p>');
+      }
+      return;
+    }
+
+    if (data.already_connected) {
+      show(
+        '<div class="success-icon already-icon">🤝</div>' +
+        '<h1>Already connected!</h1>' +
+        '<p class="names">' + data.from_name + ' &amp; ' + data.to_name + '</p>' +
+        '<p>You know each other.</p>' +
+        '<p class="close-hint">You can close this tab.</p>'
+      );
+      return;
+    }
+
+    show(
+      '<div class="success-icon">✓</div>' +
+      '<h1>Connection made</h1>' +
+      '<p class="names">' + data.from_name + ' &amp; ' + data.to_name + '</p>' +
+      '<p class="close-hint">You can close this tab.</p>'
+    );
+
+    try { window.close(); } catch(e) {}
+  })
+  .catch(function(){
+    show('<h1 class="error-msg">Something went wrong</h1><p>Check your connection and try again.</p>');
+  });
+})();
+</script>
+</body>
+</html>

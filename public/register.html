@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Register — Spoke</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0a;color:#f0ede6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;padding:40px 20px 60px;display:flex;flex-direction:column;align-items:center}
+.container{max-width:400px;width:100%}
+.event-name{font-size:13px;letter-spacing:2px;text-transform:uppercase;color:#666;margin-bottom:32px;text-align:center}
+h1{font-size:32px;font-weight:600;margin-bottom:32px;text-align:center}
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:28px}
+.role-btn{background:transparent;border:1.5px solid #333;color:#999;font-size:15px;font-weight:500;padding:16px 12px;border-radius:10px;cursor:pointer;transition:all 0.2s;text-align:center;-webkit-tap-highlight-color:transparent}
+.role-btn.active{border-color:#f0ede6;color:#f0ede6;background:rgba(240,237,230,0.06)}
+.field{margin-bottom:16px}
+.field input{width:100%;background:#111;border:1.5px solid #222;color:#f0ede6;font-size:16px;padding:14px 16px;border-radius:10px;outline:none;transition:border-color 0.2s;-webkit-appearance:none;appearance:none}
+.field input::placeholder{color:#555}
+.field input:focus{border-color:#444}
+.submit-btn{width:100%;background:#f0ede6;color:#0a0a0a;font-size:16px;font-weight:600;padding:16px;border:none;border-radius:10px;cursor:pointer;margin-top:8px;transition:opacity 0.2s;-webkit-tap-highlight-color:transparent}
+.submit-btn:disabled{opacity:0.3;cursor:not-allowed}
+.submit-btn:active:not(:disabled){opacity:0.8}
+.error{color:#ff6b6b;font-size:14px;text-align:center;margin-top:12px;display:none}
+</style>
+</head>
+<body data-wristband-id="__WRISTBAND_ID__">
+<div class="container">
+  <div class="event-name">Gala 2025</div>
+  <h1>You're almost in.</h1>
+
+  <div class="roles">
+    <button class="role-btn" data-role="vc">VC / Investor</button>
+    <button class="role-btn" data-role="founder">Founder</button>
+    <button class="role-btn" data-role="member">Club Member</button>
+    <button class="role-btn" data-role="guest">Guest / Mentor</button>
+  </div>
+
+  <div class="field">
+    <input type="text" id="nameInput" placeholder="Your name" autocomplete="name" autocapitalize="words">
+  </div>
+  <div class="field">
+    <input type="email" id="emailInput" placeholder="Email" autocomplete="email" inputmode="email">
+  </div>
+
+  <button class="submit-btn" id="submitBtn" disabled>Join the room</button>
+  <div class="error" id="errorMsg"></div>
+</div>
+
+<script>
+(function(){
+  var wristbandId = document.body.getAttribute('data-wristband-id');
+  var selectedRole = null;
+  var roleBtns = document.querySelectorAll('.role-btn');
+  var nameInput = document.getElementById('nameInput');
+  var emailInput = document.getElementById('emailInput');
+  var submitBtn = document.getElementById('submitBtn');
+  var errorMsg = document.getElementById('errorMsg');
+
+  function updateSubmit() {
+    submitBtn.disabled = !(selectedRole && nameInput.value.trim() && emailInput.value.trim());
+  }
+
+  roleBtns.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      roleBtns.forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      selectedRole = btn.getAttribute('data-role');
+      updateSubmit();
+    });
+  });
+
+  nameInput.addEventListener('input', updateSubmit);
+  emailInput.addEventListener('input', updateSubmit);
+
+  submitBtn.addEventListener('click', function() {
+    if (submitBtn.disabled) return;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Joining…';
+    errorMsg.style.display = 'none';
+
+    fetch('/api/register', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        wristband_id: wristbandId,
+        name: nameInput.value.trim(),
+        email: emailInput.value.trim(),
+        role: selectedRole
+      })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+      if (data.success) {
+        localStorage.setItem('my_wristband_id', wristbandId);
+        window.location.href = '/registered';
+      } else {
+        errorMsg.textContent = data.error || 'Something went wrong';
+        errorMsg.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Join the room';
+      }
+    })
+    .catch(function() {
+      errorMsg.textContent = 'Connection error — try again';
+      errorMsg.style.display = 'block';
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Join the room';
+    });
+  });
+})();
+</script>
+</body>
+</html>

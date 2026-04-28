@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spoke — Live Graph</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden}
+body{transition:background-color 0.6s ease}
+body.dark{background:#0a0a0a}
+body.light{background:#f5f2ec}
+svg{display:block;width:100vw;height:100vh}
+
+.counter{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);font-family:'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;font-weight:400;letter-spacing:0.8px;pointer-events:none;transition:color 0.4s,opacity 0.4s}
+body.dark .counter{color:rgba(255,255,255,0.15)}
+body.light .counter{color:rgba(0,0,0,0.2)}
+
+.brand{position:fixed;top:28px;left:50%;transform:translateX(-50%);font-family:'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;font-weight:500;letter-spacing:4px;text-transform:uppercase;pointer-events:none;transition:color 0.4s}
+body.dark .brand{color:rgba(255,255,255,0.08)}
+body.light .brand{color:rgba(0,0,0,0.1)}
+
+.tooltip{position:fixed;font-family:'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:11px;font-weight:500;letter-spacing:0.3px;padding:5px 12px;border-radius:20px;pointer-events:none;opacity:0;transition:opacity 0.2s;white-space:nowrap;z-index:10}
+body.dark .tooltip{background:rgba(255,255,255,0.08);color:rgba(245,240,230,0.8);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+body.light .tooltip{background:rgba(0,0,0,0.06);color:rgba(26,26,26,0.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+
+.name-label{position:fixed;font-family:'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;font-weight:600;letter-spacing:0.2px;pointer-events:none;z-index:8;text-align:center;white-space:nowrap;opacity:0;transition:none}
+body.dark .name-label{color:rgba(245,240,230,0.9)}
+body.light .name-label{color:rgba(26,26,26,0.85)}
+
+@keyframes nameFadeIn{0%{opacity:0;transform:translate(-50%,-50%) scale(0.8)}20%{opacity:1;transform:translate(-50%,-50%) scale(1)}80%{opacity:1;transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-50%) scale(1)}}
+@keyframes breathe{0%,100%{filter:drop-shadow(0 0 6px var(--glow))}50%{filter:drop-shadow(0 0 12px var(--glow))}}
+</style>
+</head>
+<body class="dark">
+<svg id="graph"></svg>
+<div class="counter" id="counter">0 connections · 0 guests</div>
+<div class="tooltip" id="tooltip"></div>
+<div class="brand" id="brand">Spoke</div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script>
+(function(){
+  // --- Theme ---
+  var theme = localStorage.getItem('graph_theme') || 'dark';
+  document.body.className = theme;
+
+  document.addEventListener('keydown', function(e){
+    if (e.key === 't' || e.key === 'T') {
+      theme = theme === 'dark' ? 'light' : 'dark';
+      document.body.className = theme;
+      localStorage.setItem('graph_theme', theme);
+      updateColors();
+    }
+    if (e.key === 'f' || e.key === 'F') {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(function(){});
+      } else {
+        document.exitFullscreen().catch(function(){});
+      }
+    }
+  });
+
+  // --- Config ---
+  var TOTAL_WRISTBANDS = 130;
+  var PADDING = 80;
+  var NODE_RADIUS = 8;
+  var width = window.innerWidth;
+  var height = window.innerHeight;
+
+  // --- State ---
+  var nodesMap = {};
+  var activeNodes = [];
+  var ghostNodes = [];
+  var edgesList = [];
+  var registeredSet = new Set();
+  var stats = { total_guests: 0, total_connections: 0 };
+  var connectionCounts = {};
+
+  // --- SVG setup with layers ---
+  var svg = d3.select('#graph');
+  // Defs for glow filters and gradients
+  var defs = svg.append('defs');
+
+  // Gaussian blur glow
+  var glowDark = defs.append('filter').attr('id', 'glow-dark').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%');
+  glowDark.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'blur');
+  glowDark.append('feComposite').attr('in', 'SourceGraphic').attr('in2', 'blur').attr('operator', 'over');
+
+  var glowLight = defs.append('filter').attr('id', 'glow-light').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%');
+  glowLight.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'blur');
+  glowLight.append('feComposite').attr('in', 'SourceGraphic').attr('in2', 'blur').attr('operator', 'over');
+
+  // --- Central logo ---
+  var logoGroup = svg.append('g').attr('class', 'logo');
+  var logoSize = Math.min(width, height) * 0.35;
+  logoGroup.append('image')
+    .attr('href', '/RE3NI01.svg')
+    .attr('x', width / 2 - logoSize / 2)
+    .attr('y', height / 2 - logoSize / 2)
+    .attr('width', logoSize)
+    .attr('height', logoSize)
+    .attr('opacity', theme === 'dark' ? 0.07 : 0.06)
+    .attr('id', 'center-logo')
+    .style('pointer-events', 'none')
+    .style('filter', theme === 'dark' ? 'invert(1)' : 'none');
+
+  var ghostGroup = svg.append('g').attr('class', 'ghosts');
+  var edgeGroup = svg.append('g').attr('class', 'edges');
+  var pulseGroup = svg.append('g').attr('class', 'pulses');
+  var labelGroup = svg.append('g').attr('class', 'labels');
+  var nodeGroup = svg.append('g').attr('class', 'nodes');
+
+  var tooltip = document.getElementById('tooltip');
+  var counterEl = document.getElementById('counter');
+
+  // --- Pre-populate ghost nodes in organic ring ---
+  for (var i = 1; i <= TOTAL_WRISTBANDS; i++) {
+    var id = String(i).padStart(3, '0');
+    // Arrange in concentric rings for a cleaner look
+    var ring = Math.floor((i - 1) / 30);
+    var posInRing = (i - 1) % 30;
+    var ringCount = Math.min(30, TOTAL_WRISTBANDS - ring * 30);
+    var angle = (posInRing / ringCount) * Math.PI * 2 + ring * 0.3;
+    var radius = 120 + ring * 80;
+    var node = {
+      id: id,
+      name: null,
+      role: null,
+      ghost: true,
+      gx: width / 2 + Math.cos(angle) * radius,
+      gy: height / 2 + Math.sin(angle) * radius
+    };
+    nodesMap[id] = node;
+    ghostNodes.push(node);
+  }
+
+  ghostGroup.selectAll('circle').data(ghostNodes).enter().append('circle')
+    .attr('cx', function(d){ return d.gx; })
+    .attr('cy', function(d){ return d.gy; })
+    .attr('r', 1.5)
+    .attr('fill', function(){ return theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'; })
+    .attr('class', 'ghost-dot');
+
+  // --- Force simulation ---
+  var simulation = d3.forceSimulation(activeNodes)
+    .force('link', d3.forceLink(edgesList).id(function(d){ return d.id; }).distance(90).strength(0.5))
+    .force('charge', d3.forceManyBody().strength(-100).distanceMax(400))
+    .force('center', d3.forceCenter(width / 2, height / 2).strength(0.05))
+    .force('x', d3.forceX(width / 2).strength(0.03))
+    .force('y', d3.forceY(height / 2).strength(0.03))
+    .force('collision', d3.forceCollide().radius(18).strength(0.8))
+    .force('bounds', function(){
+      for (var j = 0; j < activeNodes.length; j++) {
+        var n = activeNodes[j];
+        n.x = Math.max(PADDING, Math.min(width - PADDING, n.x));
+        n.y = Math.max(PADDING, Math.min(height - PADDING, n.y));
+      }
+    })
+    .alphaDecay(0.006)
+    .velocityDecay(0.3)
+    .on('tick', ticked);
+
+  // --- Color helpers ---
+  function nodeColor() { return theme === 'dark' ? '#f5f0e6' : '#1a1a1a'; }
+  function nodeColorDim() { return theme === 'dark' ? 'rgba(245,240,230,0.7)' : 'rgba(26,26,26,0.6)'; }
+  function edgeColor() { return theme === 'dark' ? 'rgba(245,240,230,0.08)' : 'rgba(26,26,26,0.07)'; }
+  function edgeColorBright() { return theme === 'dark' ? 'rgba(245,240,230,0.5)' : 'rgba(26,26,26,0.4)'; }
+  function glowId() { return theme === 'dark' ? 'url(#glow-dark)' : 'url(#glow-light)'; }
+  function pulseColor() { return theme === 'dark' ? 'rgba(245,240,230,0.6)' : 'rgba(26,26,26,0.35)'; }
+  function labelColor() { return theme === 'dark' ? 'rgba(245,240,230,0.85)' : 'rgba(26,26,26,0.8)'; }
+
+  // --- Render ---
+  var linkSel, nodeSel;
+
+  function render() {
+    // --- Edges ---
+    linkSel = edgeGroup.selectAll('line').data(edgesList, function(d){
+      var sid = typeof d.source === 'object' ? d.source.id : d.source;
+      var tid = typeof d.target === 'object' ? d.target.id : d.target;
+      return sid + '-' + tid;
+    });
+    linkSel.exit().transition().duration(300).attr('opacity', 0).remove();
+    var linkEnter = linkSel.enter().append('line')
+      .attr('stroke', edgeColorBright())
+      .attr('stroke-width', 2)
+      .attr('stroke-linecap', 'round')
+      .attr('opacity', 0);
+    // Flash in bright, then settle to dim
+    linkEnter.transition().duration(200).ease(d3.easeQuadOut)
+      .attr('opacity', 1)
+      .transition().duration(2000).ease(d3.easeQuadOut)
+      .attr('stroke', edgeColor())
+      .attr('stroke-width', 0.8);
+    linkSel = linkEnter.merge(linkSel);
+
+    // --- Nodes ---
+    nodeSel = nodeGroup.selectAll('circle.node').data(activeNodes, function(d){ return d.id; });
+    nodeSel.exit().transition().duration(300).attr('r', 0).remove();
+    var nodeEnter = nodeSel.enter().append('circle')
+      .attr('class', 'node')
+      .attr('r', 0)
+      .attr('fill', nodeColor)
+      .attr('filter', glowId)
+      .style('cursor', 'pointer')
+      .on('mouseenter', function(event, d){
+        if (!d.name) return;
+        tooltip.textContent = d.name;
+        tooltip.style.opacity = '1';
+        tooltip.style.left = (event.clientX + 14) + 'px';
+        tooltip.style.top = (event.clientY - 10) + 'px';
+        d3.select(this).transition().duration(120)
+          .attr('r', NODE_RADIUS * 1.6);
+      })
+      .on('mousemove', function(event){
+        tooltip.style.left = (event.clientX + 14) + 'px';
+        tooltip.style.top = (event.clientY - 10) + 'px';
+      })
+      .on('mouseleave', function(){
+        tooltip.style.opacity = '0';
+        var id = d3.select(this).datum().id;
+        var r = getNodeRadius(id);
+        d3.select(this).transition().duration(400).attr('r', r);
+      });
+    // Elastic pop-in
+    nodeEnter.transition().duration(800).ease(d3.easeElasticOut.amplitude(1.2).period(0.4))
+      .attr('r', NODE_RADIUS);
+    nodeSel = nodeEnter.merge(nodeSel);
+  }
+
+  function getNodeRadius(id) {
+    var count = connectionCounts[id] || 0;
+    return NODE_RADIUS + Math.min(count * 0.8, 6);
+  }
+
+  function updateNodeSizes() {
+    if (!nodeSel) return;
+    nodeSel.transition().duration(600).ease(d3.easeQuadOut)
+      .attr('r', function(d){ return getNodeRadius(d.id); });
+  }
+
+  function ticked() {
+    if (linkSel) {
+      linkSel
+        .attr('x1', function(d){ return d.source.x; })
+        .attr('y1', function(d){ return d.source.y; })
+        .attr('x2', function(d){ return d.target.x; })
+        .attr('y2', function(d){ return d.target.y; });
+    }
+    if (nodeSel) {
+      nodeSel
+        .attr('cx', function(d){ return d.x; })
+        .attr('cy', function(d){ return d.y; });
+    }
+  }
+
+  function updateColors() {
+    ghostGroup.selectAll('circle')
+      .transition().duration(400)
+      .attr('fill', theme === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)');
+    d3.select('#center-logo').transition().duration(400)
+      .attr('opacity', theme === 'dark' ? 0.07 : 0.06);
+    d3.select('#center-logo')
+      .style('filter', theme === 'dark' ? 'invert(1)' : 'none');
+    if (nodeSel) {
+      nodeSel.transition().duration(400)
+        .attr('fill', nodeColor())
+        .attr('filter', glowId());
+    }
+    if (linkSel) {
+      linkSel.transition().duration(400).attr('stroke', edgeColor());
+    }
+  }
+
+  function updateCounter() {
+    counterEl.textContent = stats.total_connections + ' connections · ' + stats.total_guests + ' guests';
+  }
+
+  // --- Floating name label on new connection ---
+  function showNameLabel(nodeId) {
+    var node = nodesMap[nodeId];
+    if (!node || !node.name || node.x == null) return;
+    var label = labelGroup.append('text')
+      .attr('x', node.x)
+      .attr('y', node.y - 18)
+      .attr('text-anchor', 'middle')
+      .attr('fill', labelColor())
+      .attr('font-family', "'SF Pro Display',-apple-system,BlinkMacSystemFont,sans-serif")
+      .attr('font-size', '11px')
+      .attr('font-weight', '500')
+      .attr('letter-spacing', '0.3px')
+      .attr('opacity', 0)
+      .text(node.name);
+    label.transition().duration(300).attr('opacity', 1)
+      .transition().delay(1500).duration(800).attr('opacity', 0).remove();
+  }
+
+  // --- Activate ghost node ---
+  function activateNode(wristbandId, name, role) {
+    var node = nodesMap[wristbandId];
+    if (!node) return;
+    if (registeredSet.has(wristbandId)) return;
+    registeredSet.add(wristbandId);
+
+    node.name = name;
+    node.role = role;
+    node.ghost = false;
+    // Start from their ghost position, drift toward center
+    node.x = node.gx || (width / 2 + (Math.random() - 0.5) * 300);
+    node.y = node.gy || (height / 2 + (Math.random() - 0.5) * 200);
+    node.vx = (Math.random() - 0.5) * 2;
+    node.vy = (Math.random() - 0.5) * 2;
+    connectionCounts[wristbandId] = 0;
+
+    activeNodes.push(node);
+
+    // Fade ghost dot into a bright flash, then remove
+    var ghostDot = ghostGroup.selectAll('circle')
+      .filter(function(d){ return d.id === wristbandId; });
+    ghostDot.transition().duration(150)
+      .attr('r', 6)
+      .attr('fill', nodeColor())
+      .transition().duration(200)
+      .attr('r', 0).remove();
+
+    // Arrival pulse at ghost position
+    pulseGroup.append('circle')
+      .attr('cx', node.x).attr('cy', node.y)
+      .attr('r', 3).attr('fill', nodeColor()).attr('opacity', 0.6)
+      .transition().duration(600).ease(d3.easeQuadOut)
+      .attr('r', 30).attr('opacity', 0).remove();
+
+    simulation.nodes(activeNodes);
+    render();
+    simulation.alpha(0.4).restart();
+  }
+
+  // --- Add edge ---
+  function addEdge(fromId, toId) {
+    for (var i = 0; i < edgesList.length; i++) {
+      var e = edgesList[i];
+      var sid = typeof e.source === 'object' ? e.source.id : e.source;
+      var tid = typeof e.target === 'object' ? e.target.id : e.target;
+      if ((sid === fromId && tid === toId) || (sid === toId && tid === fromId)) return;
+    }
+    edgesList.push({ source: fromId, target: toId });
+    connectionCounts[fromId] = (connectionCounts[fromId] || 0) + 1;
+    connectionCounts[toId] = (connectionCounts[toId] || 0) + 1;
+
+    simulation.force('link').links(edgesList);
+    render();
+    simulation.alpha(0.5).restart();
+
+    // Pulse on both nodes
+    triggerPulse(fromId);
+    triggerPulse(toId);
+    // Show names briefly
+    showNameLabel(fromId);
+    showNameLabel(toId);
+    // Grow nodes that gain connections
+    updateNodeSizes();
+    // Draw a bright line between nodes that fades (the edge enter handles this)
+    drawConnectionBeam(fromId, toId);
+  }
+
+  // --- Bright beam that traces the connection path ---
+  function drawConnectionBeam(fromId, toId) {
+    var fromNode = nodesMap[fromId];
+    var toNode = nodesMap[toId];
+    if (!fromNode || !toNode) return;
+    var beam = pulseGroup.append('line')
+      .attr('x1', fromNode.x).attr('y1', fromNode.y)
+      .attr('x2', fromNode.x).attr('y2', fromNode.y)
+      .attr('stroke', edgeColorBright())
+      .attr('stroke-width', 3)
+      .attr('stroke-linecap', 'round')
+      .attr('opacity', 0.8);
+    beam.transition().duration(300).ease(d3.easeQuadOut)
+      .attr('x2', toNode.x).attr('y2', toNode.y)
+      .transition().duration(800)
+      .attr('opacity', 0).attr('stroke-width', 0.5)
+      .remove();
+  }
+
+  // --- Pulse animation ---
+  function triggerPulse(nodeId) {
+    var node = nodesMap[nodeId];
+    if (!node || node.x == null) return;
+    var x = node.x;
+    var y = node.y;
+    var pc = pulseColor();
+
+    // Ring 1 — fast
+    pulseGroup.append('circle')
+      .attr('cx', x).attr('cy', y).attr('r', 8)
+      .attr('fill', 'none').attr('stroke', pc).attr('stroke-width', 2).attr('opacity', 0.7)
+      .transition().duration(600).ease(d3.easeQuadOut)
+      .attr('r', 35).attr('stroke-width', 0.3).attr('opacity', 0).remove();
+
+    // Ring 2 — slow, wider
+    pulseGroup.append('circle')
+      .attr('cx', x).attr('cy', y).attr('r', 8)
+      .attr('fill', 'none').attr('stroke', pc).attr('stroke-width', 1).attr('opacity', 0.4)
+      .transition().delay(100).duration(1000).ease(d3.easeQuadOut)
+      .attr('r', 55).attr('stroke-width', 0.2).attr('opacity', 0).remove();
+
+    // Soft bloom
+    pulseGroup.append('circle')
+      .attr('cx', x).attr('cy', y).attr('r', 6)
+      .attr('fill', pc).attr('opacity', 0.25)
+      .transition().duration(500).ease(d3.easeQuadOut)
+      .attr('r', 20).attr('opacity', 0).remove();
+
+    // Momentary node highlight — briefly brighten the node
+    nodeGroup.selectAll('circle.node')
+      .filter(function(d){ return d.id === nodeId; })
+      .transition().duration(100)
+      .attr('r', getNodeRadius(nodeId) * 1.5)
+      .attr('fill', theme === 'dark' ? '#ffffff' : '#000000')
+      .transition().duration(600).ease(d3.easeQuadOut)
+      .attr('r', getNodeRadius(nodeId))
+      .attr('fill', nodeColor());
+  }
+
+  // --- Gentle ambient drift to keep graph alive when idle ---
+  setInterval(function(){
+    if (simulation.alpha() < 0.02 && activeNodes.length > 0) {
+      simulation.alpha(0.015).restart();
+    }
+  }, 5000);
+
+  // --- Initial load ---
+  fetch('/api/graph')
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      stats.total_guests = data.stats.total_guests;
+      stats.total_connections = data.stats.total_connections;
+      updateCounter();
+
+      // Activate registered nodes (no animation on load)
+      data.nodes.forEach(function(n){
+        var node = nodesMap[n.wristband_id];
+        if (!node || registeredSet.has(n.wristband_id)) return;
+        registeredSet.add(n.wristband_id);
+        node.name = n.name;
+        node.role = n.role;
+        node.ghost = false;
+        node.x = node.gx || (width / 2 + (Math.random() - 0.5) * 300);
+        node.y = node.gy || (height / 2 + (Math.random() - 0.5) * 200);
+        connectionCounts[n.wristband_id] = 0;
+        activeNodes.push(node);
+        ghostGroup.selectAll('circle')
+          .filter(function(d){ return d.id === n.wristband_id; }).remove();
+      });
+
+      // Count connections per node
+      data.edges.forEach(function(e){
+        connectionCounts[e.from_id] = (connectionCounts[e.from_id] || 0) + 1;
+        connectionCounts[e.to_id] = (connectionCounts[e.to_id] || 0) + 1;
+        edgesList.push({ source: e.from_id, target: e.to_id });
+      });
+
+      simulation.nodes(activeNodes);
+      simulation.force('link').links(edgesList);
+      render();
+      updateNodeSizes();
+      simulation.alpha(0.8).restart();
+    });
+
+  // --- WebSocket ---
+  function connectWS() {
+    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var ws = new WebSocket(proto + '//' + location.host);
+    ws.onopen = function(){};
+    ws.onclose = function(){ setTimeout(connectWS, 3000); };
+    ws.onerror = function(){};
+    ws.onmessage = function(e) {
+      var msg = JSON.parse(e.data);
+      if (msg.type === 'new_guest') {
+        stats.total_guests++;
+        updateCounter();
+        activateNode(msg.guest.wristband_id, msg.guest.name, msg.guest.role);
+      }
+      if (msg.type === 'new_connection') {
+        stats.total_connections++;
+        updateCounter();
+        addEdge(msg.from.wristband_id, msg.to.wristband_id);
+      }
+    };
+  }
+  connectWS();
+
+  // --- Resize + fullscreen ---
+  function onResize() {
+    width = window.innerWidth;
+    height = window.innerHeight;
+    var logoSize = Math.min(width, height) * 0.35;
+    d3.select('#center-logo')
+      .attr('x', width / 2 - logoSize / 2)
+      .attr('y', height / 2 - logoSize / 2)
+      .attr('width', logoSize).attr('height', logoSize);
+    simulation.force('center', d3.forceCenter(width / 2, height / 2));
+    simulation.force('x', d3.forceX(width / 2).strength(0.03));
+    simulation.force('y', d3.forceY(height / 2).strength(0.03));
+    simulation.alpha(0.3).restart();
+  }
+  window.addEventListener('resize', onResize);
+  document.addEventListener('fullscreenchange', function(){ setTimeout(onResize, 100); });
+
+  render();
+})();
+</script>
+</body>
+</html>
