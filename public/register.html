@@ -92,6 +92,7 @@ h1{font-size:32px;font-weight:600;margin-bottom:32px;text-align:center}
     .then(function(data) {
       if (data.success) {
         localStorage.setItem('my_wristband_id', wristbandId);
+        document.cookie = 'my_wristband_id=' + wristbandId + ';path=/;max-age=31536000;SameSite=Lax';
         window.location.href = '/registered';
       } else {
         errorMsg.textContent = data.error || 'Something went wrong';

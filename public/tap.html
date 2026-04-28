@@ -28,8 +28,19 @@ p{font-size:16px;color:#999;margin-bottom:8px}
 <script>
 (function(){
   var wristbandId = document.body.getAttribute('data-wristband-id');
-  var myId = localStorage.getItem('my_wristband_id');
   var container = document.getElementById('content');
+
+  // Read my_wristband_id from localStorage OR cookie (iOS NFC fallback)
+  function getMyId() {
+    var id = null;
+    try { id = localStorage.getItem('my_wristband_id'); } catch(e) {}
+    if (!id) {
+      var m = document.cookie.match(/(?:^|;\s*)my_wristband_id=([^;]+)/);
+      if (m) id = m[1];
+    }
+    return id;
+  }
+  var myId = getMyId();
 
   function show(html) {
     container.innerHTML = html;
