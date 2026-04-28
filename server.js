@@ -395,6 +395,14 @@ app.get('/api/wrapped', (req, res) => {
   });
 });
 
+// --- API: Reset database (admin) ---
+app.post('/api/reset', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  db.exec('DELETE FROM connections; DELETE FROM events; DELETE FROM guests;');
+  broadcast({ type: 'reset' });
+  res.json({ success: true, message: 'Database reset' });
+});
+
 // --- API: All guests (for admin dropdown) ---
 app.get('/api/guests', (req, res) => {
   if (!requireAdmin(req, res)) return;
