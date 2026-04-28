@@ -114,7 +114,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // --- Helper: validate wristband ID ---
 function isValidWristbandId(id) {
-  return /^\d{3}$/.test(id) && parseInt(id, 10) >= 1 && parseInt(id, 10) <= 130;
+  return /^\d{3}$/.test(id) && parseInt(id, 10) >= 1 && parseInt(id, 10) <= 200;
 }
 
 // --- Helper: admin token check ---

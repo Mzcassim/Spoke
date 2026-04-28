@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spoke — Wrapped</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0a0a0a;color:#f5f0e6;font-family:'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+
+/* --- Graph canvas (background layer) --- */
+svg#replay{position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:1}
+
+/* --- Overlay slides --- */
+.overlay{position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+
+.slide{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;transition:opacity 0.8s ease;padding:40px}
+.slide.active{opacity:1}
+
+/* Frosted card */
+.card{background:rgba(255,255,255,0.04);backdrop-filter:blur(40px);-webkit-backdrop-filter:blur(40px);border:1px solid rgba(255,255,255,0.06);border-radius:24px;padding:48px 56px;max-width:560px;text-align:center}
+
+.brand-top{font-size:13px;font-weight:500;letter-spacing:5px;text-transform:uppercase;color:rgba(245,240,230,0.2);margin-bottom:32px}
+
+h1{font-size:64px;font-weight:700;letter-spacing:-2px;line-height:1.05;margin-bottom:16px;background:linear-gradient(135deg,#f5f0e6 0%,rgba(245,240,230,0.6) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+h2{font-size:40px;font-weight:600;letter-spacing:-1px;line-height:1.15;margin-bottom:12px;color:#f5f0e6}
+h3{font-size:24px;font-weight:500;letter-spacing:-0.5px;color:rgba(245,240,230,0.8);margin-bottom:8px}
+
+.stat-big{font-size:96px;font-weight:700;letter-spacing:-4px;line-height:1;margin:16px 0;background:linear-gradient(135deg,#f5f0e6 0%,rgba(245,240,230,0.5) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.stat-label{font-size:18px;font-weight:400;color:rgba(245,240,230,0.4);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
+.stat-sub{font-size:15px;font-weight:400;color:rgba(245,240,230,0.35);margin-top:8px}
+
+.person-name{font-size:32px;font-weight:600;color:#f5f0e6;margin:8px 0 4px}
+.person-detail{font-size:15px;color:rgba(245,240,230,0.4)}
+
+.role-bar{display:flex;align-items:center;gap:12px;margin:6px 0;width:100%}
+.role-label{font-size:14px;color:rgba(245,240,230,0.5);width:80px;text-align:right;flex-shrink:0}
+.role-track{flex:1;height:6px;border-radius:3px;background:rgba(255,255,255,0.06);overflow:hidden}
+.role-fill{height:100%;border-radius:3px;background:rgba(245,240,230,0.5);transition:width 1.2s ease}
+.role-count{font-size:14px;color:rgba(245,240,230,0.3);width:30px;flex-shrink:0}
+
+.timeline-item{display:flex;align-items:center;gap:16px;margin:8px 0;text-align:left}
+.timeline-time{font-size:13px;color:rgba(245,240,230,0.3);width:60px;flex-shrink:0;text-align:right}
+.timeline-dot{width:8px;height:8px;border-radius:50%;background:rgba(245,240,230,0.4);flex-shrink:0}
+.timeline-name{font-size:16px;color:rgba(245,240,230,0.7)}
+
+.logo-center{width:120px;height:120px;filter:invert(1);opacity:0.15;margin-bottom:24px}
+
+/* Replay speed indicator */
+.speed-badge{position:fixed;top:24px;right:24px;z-index:20;font-size:12px;font-weight:500;letter-spacing:1px;color:rgba(245,240,230,0.2);padding:6px 14px;border-radius:20px;background:rgba(255,255,255,0.04);backdrop-filter:blur(12px)}
+
+/* Bottom progress */
+.progress-bar{position:fixed;bottom:0;left:0;height:3px;background:rgba(245,240,230,0.15);z-index:20;transition:width 0.3s linear}
+
+/* Counter overlay */
+.replay-counter{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);z-index:20;font-size:13px;font-weight:400;letter-spacing:0.8px;color:rgba(255,255,255,0.15)}
+
+@keyframes countUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.count-anim{animation:countUp 0.6s ease forwards}
+
+@keyframes fadeSlideUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+.fade-up{animation:fadeSlideUp 0.8s ease forwards}
+.fade-up-delay{animation:fadeSlideUp 0.8s ease 0.3s forwards;opacity:0}
+.fade-up-delay2{animation:fadeSlideUp 0.8s ease 0.6s forwards;opacity:0}
+</style>
+</head>
+<body>
+
+<svg id="replay"></svg>
+
+<div class="overlay" id="overlay">
+  <!-- Slide 0: Title -->
+  <div class="slide active" id="slide-0">
+    <div class="card">
+      <img src="/RE3NI01.svg" class="logo-center" alt="">
+      <div class="brand-top">Spoke</div>
+      <h2>Your Evening,<br>Wrapped</h2>
+      <div class="stat-sub" style="margin-top:20px">Replaying now...</div>
+    </div>
+  </div>
+
+  <!-- Slide 1: Total guests -->
+  <div class="slide" id="slide-1">
+    <div class="card">
+      <div class="stat-label">Tonight's guest list</div>
+      <div class="stat-big" id="s1-count">0</div>
+      <h3>people walked through the door</h3>
+    </div>
+  </div>
+
+  <!-- Slide 2: Total connections -->
+  <div class="slide" id="slide-2">
+    <div class="card">
+      <div class="stat-label">Connections made</div>
+      <div class="stat-big" id="s2-count">0</div>
+      <h3>handshakes, introductions, and new beginnings</h3>
+    </div>
+  </div>
+
+  <!-- Slide 3: The Hub -->
+  <div class="slide" id="slide-3">
+    <div class="card">
+      <div class="stat-label">The Hub</div>
+      <div class="person-name" id="s3-name">—</div>
+      <div class="person-detail" id="s3-detail">—</div>
+      <div class="stat-sub" style="margin-top:16px" id="s3-count">Most connected person of the night</div>
+    </div>
+  </div>
+
+  <!-- Slide 4: First connection -->
+  <div class="slide" id="slide-4">
+    <div class="card">
+      <div class="stat-label">First spark</div>
+      <div class="person-name" id="s4-names">—</div>
+      <div class="person-detail" id="s4-time">—</div>
+      <div class="stat-sub">The first connection of the evening</div>
+    </div>
+  </div>
+
+  <!-- Slide 5: Connections by role -->
+  <div class="slide" id="slide-5">
+    <div class="card" style="min-width:400px">
+      <div class="stat-label" style="margin-bottom:20px">Who met who</div>
+      <div id="s5-bars"></div>
+    </div>
+  </div>
+
+  <!-- Slide 6: Peak minute -->
+  <div class="slide" id="slide-6">
+    <div class="card">
+      <div class="stat-label">The Rush</div>
+      <div class="stat-big" id="s6-count">0</div>
+      <h3>connections in the busiest 5 minutes</h3>
+      <div class="stat-sub" id="s6-time">—</div>
+    </div>
+  </div>
+
+  <!-- Slide 7: Final graph reveal -->
+  <div class="slide" id="slide-7">
+    <div class="card" style="background:transparent;border:none;backdrop-filter:none;-webkit-backdrop-filter:none">
+      <img src="/RE3NI01.svg" class="logo-center" style="width:80px;height:80px;opacity:0.1" alt="">
+      <div class="brand-top">Spoke</div>
+      <h2>Until next time.</h2>
+    </div>
+  </div>
+</div>
+
+<div class="speed-badge" id="speed-badge">▶ REPLAY</div>
+<div class="progress-bar" id="progress-bar"></div>
+<div class="replay-counter" id="replay-counter">0 connections · 0 guests</div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script>
+(function(){
+
+  // --- Config ---
+  var TOTAL_WRISTBANDS = 20;
+  var PADDING = 80;
+  var NODE_RADIUS = 6;
+  var REPLAY_SPEED = 80; // ms per event during replay
+  var SLIDE_DURATION = 5000; // how long each stat slide shows
+  var width = window.innerWidth;
+  var height = window.innerHeight;
+
+  // --- State ---
+  var nodesMap = {};
+  var activeNodes = [];
+  var edgesList = [];
+  var registeredSet = new Set();
+  var connectionCounts = {};
+  var replayGuests = 0;
+  var replayConns = 0;
+
+  // --- SVG setup ---
+  var svg = d3.select('#replay');
+  var defs = svg.append('defs');
+
+  var glowDark = defs.append('filter').attr('id','glow-dark').attr('x','-50%').attr('y','-50%').attr('width','200%').attr('height','200%');
+  glowDark.append('feGaussianBlur').attr('stdDeviation','4').attr('result','blur');
+  glowDark.append('feComposite').attr('in','SourceGraphic').attr('in2','blur').attr('operator','over');
+
+  // Central logo
+  var logoSize = Math.min(width,height)*0.35;
+  svg.append('image')
+    .attr('href','/RE3NI01.svg')
+    .attr('x',width/2-logoSize/2).attr('y',height/2-logoSize/2)
+    .attr('width',logoSize).attr('height',logoSize)
+    .attr('opacity',0.05).style('pointer-events','none').style('filter','invert(1)');
+
+  var edgeGroup = svg.append('g');
+  var pulseGroup = svg.append('g');
+  var nodeGroup = svg.append('g');
+
+  var counterEl = document.getElementById('replay-counter');
+  var progressBar = document.getElementById('progress-bar');
+
+  // --- Pre-populate node map ---
+  for (var i = 1; i <= TOTAL_WRISTBANDS; i++) {
+    var id = String(i).padStart(3,'0');
+    nodesMap[id] = { id:id, name:null, role:null, x: width/2+(Math.random()-0.5)*300, y: height/2+(Math.random()-0.5)*200 };
+  }
+
+  // --- Force sim ---
+  var simulation = d3.forceSimulation(activeNodes)
+    .force('link', d3.forceLink(edgesList).id(function(d){return d.id}).distance(70).strength(0.5))
+    .force('charge', d3.forceManyBody().strength(-80).distanceMax(350))
+    .force('center', d3.forceCenter(width/2, height/2).strength(0.05))
+    .force('x', d3.forceX(width/2).strength(0.03))
+    .force('y', d3.forceY(height/2).strength(0.03))
+    .force('collision', d3.forceCollide().radius(14).strength(0.8))
+    .force('bounds', function(){
+      for(var j=0;j<activeNodes.length;j++){
+        var n=activeNodes[j];
+        n.x=Math.max(PADDING,Math.min(width-PADDING,n.x));
+        n.y=Math.max(PADDING,Math.min(height-PADDING,n.y));
+      }
+    })
+    .alphaDecay(0.008)
+    .velocityDecay(0.3)
+    .on('tick', ticked);
+
+  var linkSel, nodeSel;
+
+  function render(){
+    linkSel = edgeGroup.selectAll('line').data(edgesList, function(d){
+      var s=typeof d.source==='object'?d.source.id:d.source;
+      var t=typeof d.target==='object'?d.target.id:d.target;
+      return s+'-'+t;
+    });
+    linkSel.exit().remove();
+    var linkEnter = linkSel.enter().append('line')
+      .attr('stroke','rgba(245,240,230,0.4)')
+      .attr('stroke-width',2)
+      .attr('stroke-linecap','round')
+      .attr('opacity',0);
+    linkEnter.transition().duration(150)
+      .attr('opacity',1)
+      .transition().duration(1200)
+      .attr('stroke','rgba(245,240,230,0.08)')
+      .attr('stroke-width',0.8);
+    linkSel = linkEnter.merge(linkSel);
+
+    nodeSel = nodeGroup.selectAll('circle.node').data(activeNodes, function(d){return d.id});
+    nodeSel.exit().remove();
+    var nodeEnter = nodeSel.enter().append('circle')
+      .attr('class','node')
+      .attr('r',0)
+      .attr('fill','#f5f0e6')
+      .attr('filter','url(#glow-dark)');
+    nodeEnter.transition().duration(500).ease(d3.easeElasticOut.amplitude(1).period(0.5))
+      .attr('r', NODE_RADIUS);
+    nodeSel = nodeEnter.merge(nodeSel);
+  }
+
+  function getNodeRadius(id){ return NODE_RADIUS + Math.min((connectionCounts[id]||0)*0.6, 5); }
+
+  function ticked(){
+    if(linkSel){
+      linkSel.attr('x1',function(d){return d.source.x}).attr('y1',function(d){return d.source.y})
+        .attr('x2',function(d){return d.target.x}).attr('y2',function(d){return d.target.y});
+    }
+    if(nodeSel){
+      nodeSel.attr('cx',function(d){return d.x}).attr('cy',function(d){return d.y});
+    }
+  }
+
+  function activateNode(wid, name, role){
+    var node = nodesMap[wid];
+    if(!node || registeredSet.has(wid)) return;
+    registeredSet.add(wid);
+    node.name = name;
+    node.role = role;
+    node.vx = (Math.random()-0.5)*2;
+    node.vy = (Math.random()-0.5)*2;
+    connectionCounts[wid] = 0;
+    activeNodes.push(node);
+
+    // Small pulse
+    pulseGroup.append('circle')
+      .attr('cx',node.x).attr('cy',node.y).attr('r',3)
+      .attr('fill','#f5f0e6').attr('opacity',0.5)
+      .transition().duration(400).attr('r',20).attr('opacity',0).remove();
+
+    simulation.nodes(activeNodes);
+    render();
+    simulation.alpha(0.3).restart();
+    replayGuests++;
+    counterEl.textContent = replayConns+' connections · '+replayGuests+' guests';
+  }
+
+  function addEdge(fromId, toId){
+    for(var i=0;i<edgesList.length;i++){
+      var e=edgesList[i];
+      var s=typeof e.source==='object'?e.source.id:e.source;
+      var t=typeof e.target==='object'?e.target.id:e.target;
+      if((s===fromId&&t===toId)||(s===toId&&t===fromId)) return;
+    }
+    edgesList.push({source:fromId,target:toId});
+    connectionCounts[fromId]=(connectionCounts[fromId]||0)+1;
+    connectionCounts[toId]=(connectionCounts[toId]||0)+1;
+    simulation.force('link').links(edgesList);
+    render();
+    simulation.alpha(0.4).restart();
+
+    // Pulse both
+    [fromId,toId].forEach(function(nid){
+      var n=nodesMap[nid]; if(!n) return;
+      pulseGroup.append('circle')
+        .attr('cx',n.x).attr('cy',n.y).attr('r',6)
+        .attr('fill','none').attr('stroke','rgba(245,240,230,0.5)').attr('stroke-width',1.5).attr('opacity',0.6)
+        .transition().duration(500).attr('r',30).attr('opacity',0).remove();
+      nodeGroup.selectAll('circle.node').filter(function(d){return d.id===nid})
+        .transition().duration(80).attr('r',getNodeRadius(nid)*1.4).attr('fill','#ffffff')
+        .transition().duration(500).attr('r',getNodeRadius(nid)).attr('fill','#f5f0e6');
+    });
+
+    // Beam
+    var fn=nodesMap[fromId],tn=nodesMap[toId];
+    if(fn&&tn){
+      pulseGroup.append('line')
+        .attr('x1',fn.x).attr('y1',fn.y).attr('x2',fn.x).attr('y2',fn.y)
+        .attr('stroke','rgba(245,240,230,0.5)').attr('stroke-width',2.5).attr('stroke-linecap','round').attr('opacity',0.7)
+        .transition().duration(200).attr('x2',tn.x).attr('y2',tn.y)
+        .transition().duration(600).attr('opacity',0).remove();
+    }
+
+    replayConns++;
+    counterEl.textContent = replayConns+' connections · '+replayGuests+' guests';
+  }
+
+  function updateNodeSizes(){
+    if(!nodeSel) return;
+    nodeSel.transition().duration(400).attr('r', function(d){return getNodeRadius(d.id)});
+  }
+
+  // --- Slide management ---
+  var currentSlide = 0;
+  function showSlide(n){
+    document.querySelectorAll('.slide').forEach(function(s){s.classList.remove('active')});
+    var el = document.getElementById('slide-'+n);
+    if(el) el.classList.add('active');
+    currentSlide = n;
+  }
+
+  // --- Animate a number counting up ---
+  function animateNumber(el, target, duration){
+    duration = duration || 1200;
+    var start = 0;
+    var startTime = null;
+    function step(ts){
+      if(!startTime) startTime = ts;
+      var progress = Math.min((ts - startTime)/duration, 1);
+      var eased = 1 - Math.pow(1 - progress, 3); // ease out cubic
+      el.textContent = Math.round(eased * target);
+      if(progress < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  // --- Fetch data and run ---
+  fetch('/api/graph')
+    .then(function(r){return r.json()})
+    .then(function(data){
+      // Also fetch rich connections for timestamps
+      return fetch('/api/backup?token='+getAdminToken())
+        .then(function(r){return r.json()})
+        .then(function(backup){
+          return { graph: data, backup: backup };
+        })
+        .catch(function(){
+          // If backup fails (no token), use graph data only
+          return { graph: data, backup: null };
+        });
+    })
+    .then(function(result){
+      var data = result.graph;
+      var backup = result.backup;
+
+      // Build ordered event timeline from backup
+      var timeline = [];
+      var guestMap = {};
+
+      if(backup && backup.guests){
+        backup.guests.forEach(function(g){
+          guestMap[g.wristband_id] = g;
+          timeline.push({ type:'guest', time: g.registered_at, data: g });
+        });
+      } else {
+        data.nodes.forEach(function(n){
+          guestMap[n.wristband_id] = n;
+          timeline.push({ type:'guest', time:'', data: n });
+        });
+      }
+
+      if(backup && backup.connections){
+        backup.connections.forEach(function(c){
+          timeline.push({ type:'connection', time: c.connected_at, data: c });
+        });
+      } else {
+        data.edges.forEach(function(e){
+          timeline.push({ type:'connection', time: e.timestamp||'', data: { from_wristband: e.from_id, to_wristband: e.to_id, from_name:'', to_name:'' }});
+        });
+      }
+
+      // Sort by timestamp
+      timeline.sort(function(a,b){ return (a.time||'').localeCompare(b.time||'') });
+
+      // --- Compute stats ---
+      var totalGuests = data.stats.total_guests;
+      var totalConns = data.stats.total_connections;
+
+      // Most connected
+      var hubId = null, hubMax = 0;
+      var cc = {};
+      data.edges.forEach(function(e){
+        cc[e.from_id]=(cc[e.from_id]||0)+1;
+        cc[e.to_id]=(cc[e.to_id]||0)+1;
+      });
+      Object.keys(cc).forEach(function(k){
+        if(cc[k]>hubMax){ hubMax=cc[k]; hubId=k; }
+      });
+      var hubGuest = hubId ? guestMap[hubId] : null;
+
+      // First connection
+      var connEvents = timeline.filter(function(t){return t.type==='connection'});
+      var firstConn = connEvents.length > 0 ? connEvents[0] : null;
+
+      // Role breakdown
+      var roleCounts = {};
+      data.nodes.forEach(function(n){
+        roleCounts[n.role] = (roleCounts[n.role]||0)+1;
+      });
+
+      // Peak 5-min window
+      var peakCount = 0, peakTime = '';
+      if(connEvents.length > 0){
+        for(var i=0; i<connEvents.length; i++){
+          var windowStart = new Date(connEvents[i].time).getTime();
+          var count = 0;
+          for(var j=i; j<connEvents.length; j++){
+            if(new Date(connEvents[j].time).getTime() - windowStart <= 5*60*1000){
+              count++;
+            } else break;
+          }
+          if(count > peakCount){
+            peakCount = count;
+            peakTime = connEvents[i].time;
+          }
+        }
+      }
+
+      // --- Phase 1: Replay graph (title slide visible) ---
+      showSlide(0);
+
+      var eventIndex = 0;
+      var totalEvents = timeline.length;
+
+      function replayNext(){
+        if(eventIndex >= totalEvents){
+          // Replay done — start stat slides
+          setTimeout(function(){ startStatSlides(totalGuests, totalConns, hubGuest, hubMax, firstConn, roleCounts, peakCount, peakTime); }, 1500);
+          return;
+        }
+
+        var ev = timeline[eventIndex];
+        eventIndex++;
+
+        // Update progress bar
+        progressBar.style.width = (eventIndex/totalEvents*100)+'%';
+
+        if(ev.type === 'guest'){
+          var g = ev.data;
+          activateNode(g.wristband_id, g.name, g.role);
+        } else if(ev.type === 'connection'){
+          var c = ev.data;
+          var fid = c.from_wristband || c.from_id;
+          var tid = c.to_wristband || c.to_id;
+          addEdge(fid, tid);
+        }
+
+        // Speed up as we go
+        var speed = REPLAY_SPEED;
+        var progress = eventIndex / totalEvents;
+        if(progress > 0.7) speed = REPLAY_SPEED * 0.5;
+        if(progress > 0.9) speed = REPLAY_SPEED * 0.3;
+
+        setTimeout(replayNext, speed);
+      }
+
+      // Small delay then start replay
+      setTimeout(function(){
+        document.getElementById('speed-badge').textContent = '▶ REPLAYING';
+        replayNext();
+      }, 2000);
+
+      // --- Phase 2: Stat slides ---
+      function startStatSlides(totalGuests, totalConns, hubGuest, hubMax, firstConn, roleCounts, peakCount, peakTime){
+        document.getElementById('speed-badge').textContent = '● WRAPPED';
+        updateNodeSizes();
+
+        var slides = [];
+
+        // Slide 1: Total guests
+        slides.push(function(){
+          showSlide(1);
+          animateNumber(document.getElementById('s1-count'), totalGuests);
+        });
+
+        // Slide 2: Total connections
+        slides.push(function(){
+          showSlide(2);
+          animateNumber(document.getElementById('s2-count'), totalConns);
+        });
+
+        // Slide 3: The Hub
+        slides.push(function(){
+          showSlide(3);
+          if(hubGuest){
+            document.getElementById('s3-name').textContent = hubGuest.name || 'Unknown';
+            document.getElementById('s3-detail').textContent = (hubGuest.role||'guest') + (hubGuest.email ? ' · '+hubGuest.email : '');
+            document.getElementById('s3-count').textContent = hubMax + ' connections — the most connected person tonight';
+          }
+        });
+
+        // Slide 4: First connection
+        slides.push(function(){
+          showSlide(4);
+          if(firstConn){
+            var c = firstConn.data;
+            var n1 = c.from_name || (guestMap[c.from_wristband||c.from_id]||{}).name || '?';
+            var n2 = c.to_name || (guestMap[c.to_wristband||c.to_id]||{}).name || '?';
+            document.getElementById('s4-names').textContent = n1 + ' & ' + n2;
+            if(firstConn.time){
+              var d = new Date(firstConn.time);
+              document.getElementById('s4-time').textContent = d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+            }
+          }
+        });
+
+        // Slide 5: Role breakdown
+        slides.push(function(){
+          showSlide(5);
+          var container = document.getElementById('s5-bars');
+          container.innerHTML = '';
+          var maxRole = Math.max.apply(null, Object.values(roleCounts));
+          var roleLabels = { vc:'VCs', founder:'Founders', member:'Members', guest:'Guests' };
+          Object.keys(roleCounts).sort().forEach(function(role){
+            var count = roleCounts[role];
+            var row = document.createElement('div');
+            row.className = 'role-bar';
+            row.innerHTML = '<div class="role-label">'+(roleLabels[role]||role)+'</div>'
+              +'<div class="role-track"><div class="role-fill" style="width:0%"></div></div>'
+              +'<div class="role-count">'+count+'</div>';
+            container.appendChild(row);
+            // Animate bar
+            setTimeout(function(){
+              row.querySelector('.role-fill').style.width = (count/maxRole*100)+'%';
+            }, 200);
+          });
+        });
+
+        // Slide 6: Peak window
+        slides.push(function(){
+          showSlide(6);
+          animateNumber(document.getElementById('s6-count'), peakCount, 800);
+          if(peakTime){
+            var d = new Date(peakTime);
+            document.getElementById('s6-time').textContent = 'Around '+d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+          }
+        });
+
+        // Slide 7: Finale
+        slides.push(function(){
+          showSlide(7);
+        });
+
+        // Cycle through slides
+        var slideIndex = 0;
+        function nextSlide(){
+          if(slideIndex >= slides.length) return;
+          slides[slideIndex]();
+          slideIndex++;
+          if(slideIndex < slides.length){
+            setTimeout(nextSlide, SLIDE_DURATION);
+          }
+        }
+
+        // Fade out title, then start stats
+        showSlide(-1); // hide all
+        setTimeout(nextSlide, 800);
+      }
+    });
+
+  function getAdminToken(){
+    // Try to get from URL params or localStorage
+    var params = new URLSearchParams(window.location.search);
+    return params.get('token') || 'change_me_before_deploy';
+  }
+
+  // Resize
+  window.addEventListener('resize', function(){
+    width = window.innerWidth;
+    height = window.innerHeight;
+    simulation.force('center', d3.forceCenter(width/2, height/2));
+    simulation.force('x', d3.forceX(width/2).strength(0.03));
+    simulation.force('y', d3.forceY(height/2).strength(0.03));
+    simulation.alpha(0.3).restart();
+  });
+
+  // Fullscreen on F
+  document.addEventListener('keydown', function(e){
+    if(e.key==='f'||e.key==='F'){
+      if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(function(){});
+      else document.exitFullscreen().catch(function(){});
+    }
+  });
+
+})();
+</script>
+</body>
+</html>
