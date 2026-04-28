@@ -127,6 +127,15 @@ function requireAdmin(req, res) {
 }
 
 // --- Routes: NFC tap landing page ---
+app.get('/tap', (req, res) => {
+  const wristbandId = req.query.id;
+  if (!wristbandId) return res.status(400).send('Missing wristband ID');
+  const tapHtmlPath = path.join(__dirname, 'public', 'tap.html');
+  let html = fs.readFileSync(tapHtmlPath, 'utf8');
+  html = html.replace('__WRISTBAND_ID__', wristbandId);
+  res.send(html);
+});
+
 app.get('/tap/:wristband_id', (req, res) => {
   const wristbandId = req.params.wristband_id;
   const tapHtmlPath = path.join(__dirname, 'public', 'tap.html');
