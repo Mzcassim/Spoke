@@ -62,10 +62,20 @@ const stmts = {
   guestCount: db.prepare('SELECT COUNT(*) as count FROM guests'),
   connectionCount: db.prepare('SELECT COUNT(*) as count FROM connections'),
   connectionsForGuest: db.prepare(`
-    SELECT g.wristband_id, g.name, g.email, g.role
+    SELECT g.wristband_id, g.name, g.email, g.role, c.timestamp as connected_at
     FROM connections c
     JOIN guests g ON (g.wristband_id = CASE WHEN c.from_id = ? THEN c.to_id ELSE c.from_id END)
     WHERE c.from_id = ? OR c.to_id = ?
+    ORDER BY c.timestamp ASC
+  `),
+  allConnectionsRich: db.prepare(`
+    SELECT c.id, c.timestamp as connected_at,
+      f.wristband_id as from_wristband, f.name as from_name, f.email as from_email, f.role as from_role,
+      t.wristband_id as to_wristband, t.name as to_name, t.email as to_email, t.role as to_role
+    FROM connections c
+    JOIN guests f ON f.wristband_id = c.from_id
+    JOIN guests t ON t.wristband_id = c.to_id
+    ORDER BY c.timestamp ASC
   `),
   mostConnected: db.prepare(`
     SELECT g.wristband_id, g.name, COUNT(*) as conn_count
@@ -309,6 +319,73 @@ app.get('/api/guest/:wristband_id/connections', (req, res) => {
   res.json({ success: true, guest, connections: conns });
 });
 
+// --- API: Guest "wrapped" summary ---
+app.get('/api/guest/:wristband_id/wrapped', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const guest = stmts.getGuest.get(req.params.wristband_id);
+  if (!guest) return res.json({ success: false, error: 'Guest not found' });
+
+  const conns = stmts.connectionsForGuest.all(req.params.wristband_id, req.params.wristband_id, req.params.wristband_id);
+  const totalGuests = stmts.guestCount.get().count;
+  const totalConnections = stmts.connectionCount.get().count;
+  const first = conns.length > 0 ? conns[0] : null;
+  const last = conns.length > 0 ? conns[conns.length - 1] : null;
+
+  const roleCounts = {};
+  conns.forEach(c => { roleCounts[c.role] = (roleCounts[c.role] || 0) + 1; });
+
+  res.json({
+    success: true,
+    guest: { name: guest.name, email: guest.email, role: guest.role, registered_at: guest.registered_at },
+    stats: {
+      connections_made: conns.length,
+      total_guests_at_event: totalGuests,
+      total_connections_at_event: totalConnections,
+      first_connection: first ? { name: first.name, email: first.email, time: first.connected_at } : null,
+      last_connection: last ? { name: last.name, email: last.email, time: last.connected_at } : null,
+      connections_by_role: roleCounts,
+    },
+    people_met: conns.map(c => ({
+      name: c.name,
+      email: c.email,
+      role: c.role,
+      connected_at: c.connected_at,
+    })),
+  });
+});
+
+// --- API: All wrapped summaries (for bulk email) ---
+app.get('/api/wrapped', (req, res) => {
+  if (!requireAdmin(req, res)) return;
+
+  const guests = stmts.allGuests.all();
+  const totalGuests = stmts.guestCount.get().count;
+  const totalConnections = stmts.connectionCount.get().count;
+
+  const summaries = guests.map(guest => {
+    const conns = stmts.connectionsForGuest.all(guest.wristband_id, guest.wristband_id, guest.wristband_id);
+    return {
+      name: guest.name,
+      email: guest.email,
+      role: guest.role,
+      registered_at: guest.registered_at,
+      connections_made: conns.length,
+      people_met: conns.map(c => ({
+        name: c.name,
+        email: c.email,
+        role: c.role,
+        connected_at: c.connected_at,
+      })),
+    };
+  });
+
+  res.json({
+    event_stats: { total_guests: totalGuests, total_connections: totalConnections },
+    guests: summaries,
+  });
+});
+
 // --- API: All guests (for admin dropdown) ---
 app.get('/api/guests', (req, res) => {
   if (!requireAdmin(req, res)) return;
@@ -320,7 +397,7 @@ app.get('/api/backup', (req, res) => {
   if (!requireAdmin(req, res)) return;
 
   const guests = stmts.allGuests.all();
-  const connections = stmts.allConnections.all();
+  const connections = stmts.allConnectionsRich.all();
   const events = stmts.allEvents.all();
 
   const backup = {
@@ -340,10 +417,11 @@ setInterval(() => {
   const connections = stmts.allConnections.all();
   if (guests.length === 0 && connections.length === 0) return;
 
+  const richConnections = stmts.allConnectionsRich.all();
   const snapshot = {
     timestamp: new Date().toISOString(),
     guests,
-    connections,
+    connections: richConnections,
   };
   console.log('--- DB SNAPSHOT ---');
   console.log(JSON.stringify(snapshot));
