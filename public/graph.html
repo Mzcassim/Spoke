@@ -424,10 +424,18 @@ body.light .name-label{color:rgba(26,26,26,0.85)}
 
   // --- Gentle ambient drift to keep graph alive when idle ---
   setInterval(function(){
-    if (simulation.alpha() < 0.02 && activeNodes.length > 0) {
-      simulation.alpha(0.015).restart();
+    if (activeNodes.length > 0) {
+      // Give each node a tiny random nudge so they float
+      activeNodes.forEach(function(n){
+        n.vx += (Math.random() - 0.5) * 0.8;
+        n.vy += (Math.random() - 0.5) * 0.8;
+      });
+      var minAlpha = activeNodes.length < 5 ? 0.06 : 0.02;
+      if (simulation.alpha() < minAlpha) {
+        simulation.alpha(minAlpha).restart();
+      }
     }
-  }, 5000);
+  }, 2000);
 
   // --- Initial load ---
   fetch('/api/graph')
