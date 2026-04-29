@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Spoke — Live Graph</title>
+<title>Spoke. — Live Graph</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{width:100%;height:100%;overflow:hidden}
@@ -36,7 +36,7 @@ body.light .name-label{color:rgba(26,26,26,0.85)}
 <svg id="graph"></svg>
 <div class="counter" id="counter">0 connections · 0 guests</div>
 <div class="tooltip" id="tooltip"></div>
-<div class="brand" id="brand">Spoke</div>
+<div class="brand" id="brand">Spoke.</div>
 
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script>
@@ -64,7 +64,7 @@ body.light .name-label{color:rgba(26,26,26,0.85)}
   // --- Config ---
   var TOTAL_WRISTBANDS = 50;
   var PADDING = 80;
-  var NODE_RADIUS = 8;
+  var NODE_RADIUS = 10;
   var width = window.innerWidth;
   var height = window.innerHeight;
 
@@ -93,7 +93,7 @@ body.light .name-label{color:rgba(26,26,26,0.85)}
 
   // --- Central logo ---
   var logoGroup = svg.append('g').attr('class', 'logo');
-  var logoSize = Math.min(width, height) * 0.35;
+  var logoSize = Math.min(width, height) * 0.45;
   logoGroup.append('image')
     .attr('href', '/RE3NI01.svg')
     .attr('x', width / 2 - logoSize / 2)
@@ -117,12 +117,11 @@ body.light .name-label{color:rgba(26,26,26,0.85)}
   // --- Pre-populate ghost nodes in organic ring ---
   for (var i = 1; i <= TOTAL_WRISTBANDS; i++) {
     var id = String(i).padStart(3, '0');
-    // Arrange in concentric rings for a cleaner look
-    var ring = Math.floor((i - 1) / 30);
-    var posInRing = (i - 1) % 30;
-    var ringCount = Math.min(30, TOTAL_WRISTBANDS - ring * 30);
-    var angle = (posInRing / ringCount) * Math.PI * 2 + ring * 0.3;
-    var radius = 120 + ring * 80;
+    // Spread across a wide elliptical area centered on screen
+    var goldenAngle = 2.399963; // golden angle in radians
+    var angle = i * goldenAngle;
+    var maxR = Math.min(width, height) * 0.38;
+    var radius = maxR * Math.sqrt(i / TOTAL_WRISTBANDS) * 0.9;
     var node = {
       id: id,
       name: null,
@@ -135,22 +134,13 @@ body.light .name-label{color:rgba(26,26,26,0.85)}
     ghostNodes.push(node);
   }
 
-  // Ghost dot outer ring
-  ghostGroup.selectAll('circle.ghost-ring').data(ghostNodes).enter().append('circle')
-    .attr('class', 'ghost-ring')
-    .attr('cx', function(d){ return d.gx; })
-    .attr('cy', function(d){ return d.gy; })
-    .attr('r', 6)
-    .attr('fill', 'none')
-    .attr('stroke', function(){ return theme === 'dark' ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)'; })
-    .attr('stroke-width', 0.5);
-  // Ghost dot center
+  // Ghost dots — soft pulsing placeholders
   ghostGroup.selectAll('circle.ghost-dot').data(ghostNodes).enter().append('circle')
     .attr('class', 'ghost-dot')
     .attr('cx', function(d){ return d.gx; })
     .attr('cy', function(d){ return d.gy; })
-    .attr('r', 2.5)
-    .attr('fill', function(){ return theme === 'dark' ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)'; });
+    .attr('r', 3)
+    .attr('fill', function(){ return theme === 'dark' ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)'; });
 
   // --- Force simulation ---
   var simulation = d3.forceSimulation(activeNodes)
@@ -512,7 +502,7 @@ body.light .name-label{color:rgba(26,26,26,0.85)}
   function onResize() {
     width = window.innerWidth;
     height = window.innerHeight;
-    var logoSize = Math.min(width, height) * 0.35;
+    var logoSize = Math.min(width, height) * 0.45;
     d3.select('#center-logo')
       .attr('x', width / 2 - logoSize / 2)
       .attr('y', height / 2 - logoSize / 2)
