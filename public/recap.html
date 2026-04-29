@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spoke — Email Recaps</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0a;color:#f0ede6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;padding:32px 20px 80px}
+
+.header{max-width:720px;margin:0 auto 40px;text-align:center}
+.header h1{font-size:28px;font-weight:600;margin-bottom:8px}
+.header p{color:#666;font-size:14px}
+
+.controls{max-width:720px;margin:0 auto 24px;display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.controls select{background:#111;border:1px solid #333;color:#f0ede6;padding:10px 14px;border-radius:8px;font-size:14px;flex:1;min-width:200px;-webkit-appearance:none;appearance:none}
+.controls button{background:#f0ede6;color:#0a0a0a;border:none;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:opacity 0.2s;white-space:nowrap}
+.controls button:hover{opacity:0.85}
+.controls button:active{opacity:0.7}
+.btn-outline{background:transparent !important;color:#f0ede6 !important;border:1px solid #333 !important}
+.btn-outline:hover{border-color:#666 !important}
+
+.stats-bar{max-width:720px;margin:0 auto 24px;display:flex;gap:24px;font-size:13px;color:#555}
+.stats-bar span{color:#888}
+
+.card-list{max-width:720px;margin:0 auto}
+
+.email-card{background:#111;border:1px solid #1a1a1a;border-radius:12px;margin-bottom:16px;overflow:hidden;transition:border-color 0.2s}
+.email-card:hover{border-color:#333}
+
+.email-card-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #1a1a1a;cursor:pointer}
+.email-card-header h3{font-size:15px;font-weight:500}
+.email-card-header .meta{font-size:13px;color:#555}
+.email-card-header .conn-badge{background:rgba(245,240,230,0.06);color:#888;font-size:12px;padding:4px 10px;border-radius:12px}
+
+.email-card-body{display:none;padding:0}
+.email-card.open .email-card-body{display:block}
+
+.email-preview{padding:24px 20px;font-size:14px;line-height:1.7;color:#ccc;white-space:pre-wrap;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+.email-preview .greeting{font-size:16px;font-weight:500;color:#f0ede6;margin-bottom:12px}
+.email-preview .section-title{font-weight:600;color:#f0ede6;margin-top:16px;margin-bottom:4px;font-size:14px}
+.email-preview .person-row{padding:6px 0;border-bottom:1px solid #1a1a1a;display:flex;justify-content:space-between;align-items:center}
+.email-preview .person-row:last-child{border-bottom:none}
+.email-preview .person-name{font-weight:500;color:#f0ede6}
+.email-preview .person-meta{font-size:12px;color:#555}
+.email-preview .person-email{font-size:12px;color:#666;font-family:monospace}
+.email-preview .stat-line{color:#888;font-size:13px;margin:4px 0}
+.email-preview .sign-off{margin-top:20px;color:#666;font-style:italic}
+
+.email-card-actions{padding:12px 20px;border-top:1px solid #1a1a1a;display:flex;gap:8px;justify-content:flex-end}
+.email-card-actions button{background:rgba(245,240,230,0.06);color:#ccc;border:none;padding:8px 16px;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;transition:background 0.2s}
+.email-card-actions button:hover{background:rgba(245,240,230,0.12)}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:#f0ede6;color:#0a0a0a;padding:10px 24px;border-radius:20px;font-size:14px;font-weight:500;transition:transform 0.3s ease;z-index:100;pointer-events:none}
+.toast.show{transform:translateX(-50%) translateY(0)}
+
+.loading{text-align:center;padding:60px;color:#555}
+.empty{text-align:center;padding:60px;color:#555}
+
+.subject-line{padding:12px 20px;background:rgba(245,240,230,0.02);border-bottom:1px solid #1a1a1a;font-size:12px;color:#555;font-family:monospace}
+.subject-line span{color:#888}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Email Recaps</h1>
+  <p>Personal follow-up emails for every guest at Agora Gala 2026</p>
+</div>
+
+<div class="controls">
+  <select id="filterRole">
+    <option value="all">All roles</option>
+    <option value="vc">VCs / Investors</option>
+    <option value="founder">Founders</option>
+    <option value="member">Club Members</option>
+    <option value="guest">Guests / Mentors</option>
+  </select>
+  <button id="btnCopyAll">Copy all emails</button>
+  <button class="btn-outline" id="btnExpandAll">Expand all</button>
+</div>
+
+<div class="stats-bar" id="statsBar"></div>
+<div class="card-list" id="cardList">
+  <div class="loading">Loading recaps…</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  var token = new URLSearchParams(window.location.search).get('token') || 'spoke-gala-2026';
+  var allData = null;
+  var expanded = false;
+
+  function toast(msg){
+    var el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    setTimeout(function(){ el.classList.remove('show'); }, 2000);
+  }
+
+  function formatTime(ts){
+    if(!ts) return '';
+    var d = new Date(ts.replace(' ','T')+'Z');
+    return d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+  }
+
+  function roleLabel(role){
+    var map = {vc:'VC / Investor',founder:'Founder',member:'Club Member',guest:'Guest / Mentor'};
+    return map[role] || role;
+  }
+
+  function generateEmailText(guest, eventStats){
+    var lines = [];
+    lines.push('Hi ' + guest.name.split(' ')[0] + ',');
+    lines.push('');
+    lines.push('Thanks for being part of Agora Gala 2026! Here\'s a recap of your evening.');
+    lines.push('');
+
+    if(guest.connections_made === 0){
+      lines.push('We didn\'t capture any connections on your wristband, but we hope you had a great time meeting people the old-fashioned way.');
+    } else {
+      lines.push('You made ' + guest.connections_made + ' connection' + (guest.connections_made !== 1 ? 's' : '') + ' tonight — out of ' + eventStats.total_guests + ' guests and ' + eventStats.total_connections + ' total connections across the room.');
+      lines.push('');
+      lines.push('People you connected with:');
+      lines.push('');
+      guest.people_met.forEach(function(p){
+        lines.push('• ' + p.name + ' (' + roleLabel(p.role) + ') — ' + p.email);
+      });
+    }
+
+    lines.push('');
+    lines.push('We hope this is the start of something. Don\'t be a stranger — reach out to the people you met.');
+    lines.push('');
+    lines.push('— The Agora Team');
+    return lines.join('\n');
+  }
+
+  function generateEmailHTML(guest, eventStats){
+    var html = '';
+    html += '<div class="greeting">Hi ' + guest.name.split(' ')[0] + ',</div>';
+    html += '<div>Thanks for being part of <strong>Agora Gala 2026</strong>! Here\'s a recap of your evening.</div>';
+
+    if(guest.connections_made === 0){
+      html += '<div style="margin-top:12px;color:#888">We didn\'t capture any connections on your wristband, but we hope you had a great time meeting people the old-fashioned way.</div>';
+    } else {
+      html += '<div class="stat-line" style="margin-top:12px">You made <strong style="color:#f0ede6">' + guest.connections_made + ' connection' + (guest.connections_made !== 1 ? 's' : '') + '</strong> tonight — out of ' + eventStats.total_guests + ' guests and ' + eventStats.total_connections + ' total connections.</div>';
+      html += '<div class="section-title">People you connected with</div>';
+      guest.people_met.forEach(function(p){
+        html += '<div class="person-row">';
+        html += '<div><span class="person-name">' + p.name + '</span><br><span class="person-meta">' + roleLabel(p.role) + (p.connected_at ? ' · ' + formatTime(p.connected_at) : '') + '</span></div>';
+        html += '<div class="person-email">' + p.email + '</div>';
+        html += '</div>';
+      });
+    }
+
+    html += '<div class="sign-off">We hope this is the start of something.<br>Don\'t be a stranger — reach out to the people you met.<br><br>— The Agora Team</div>';
+    return html;
+  }
+
+  function renderCards(filter){
+    if(!allData) return;
+    var list = document.getElementById('cardList');
+    var guests = allData.guests;
+    if(filter && filter !== 'all'){
+      guests = guests.filter(function(g){ return g.role === filter; });
+    }
+
+    // Sort by connections (most first)
+    guests.sort(function(a,b){ return b.connections_made - a.connections_made; });
+
+    document.getElementById('statsBar').innerHTML =
+      '<span>' + allData.event_stats.total_guests + ' guests</span> · ' +
+      '<span>' + allData.event_stats.total_connections + ' connections</span> · ' +
+      'Showing <span>' + guests.length + '</span> recap' + (guests.length !== 1 ? 's' : '');
+
+    if(guests.length === 0){
+      list.innerHTML = '<div class="empty">No guests match this filter.</div>';
+      return;
+    }
+
+    var html = '';
+    guests.forEach(function(guest, i){
+      var subject = 'Your Agora Gala 2026 Recap — ' + guest.connections_made + ' connection' + (guest.connections_made !== 1 ? 's' : '') + ' made';
+      html += '<div class="email-card" data-index="' + i + '" data-email="' + guest.email + '">';
+      html += '<div class="email-card-header" onclick="this.parentElement.classList.toggle(\'open\')">';
+      html += '<div><h3>' + guest.name + '</h3><div class="meta">' + guest.email + ' · ' + roleLabel(guest.role) + '</div></div>';
+      html += '<div class="conn-badge">' + guest.connections_made + ' connection' + (guest.connections_made !== 1 ? 's' : '') + '</div>';
+      html += '</div>';
+      html += '<div class="email-card-body">';
+      html += '<div class="subject-line">Subject: <span>' + subject + '</span></div>';
+      html += '<div class="email-preview">' + generateEmailHTML(guest, allData.event_stats) + '</div>';
+      html += '<div class="email-card-actions">';
+      html += '<button onclick="copyEmail(\'' + i + '\')">Copy plain text</button>';
+      html += '<button onclick="openMailto(\'' + i + '\')">Open in mail app</button>';
+      html += '</div>';
+      html += '</div>';
+      html += '</div>';
+    });
+    list.innerHTML = html;
+
+    // Store for copy/mailto
+    window._recapGuests = guests;
+  }
+
+  window.copyEmail = function(index){
+    var guest = window._recapGuests[parseInt(index)];
+    var text = generateEmailText(guest, allData.event_stats);
+    navigator.clipboard.writeText(text).then(function(){
+      toast('Copied email for ' + guest.name.split(' ')[0]);
+    });
+  };
+
+  window.openMailto = function(index){
+    var guest = window._recapGuests[parseInt(index)];
+    var subject = encodeURIComponent('Your Agora Gala 2026 Recap');
+    var body = encodeURIComponent(generateEmailText(guest, allData.event_stats));
+    window.open('mailto:' + guest.email + '?subject=' + subject + '&body=' + body);
+  };
+
+  // Copy all
+  document.getElementById('btnCopyAll').addEventListener('click', function(){
+    if(!allData) return;
+    var all = '';
+    allData.guests.forEach(function(guest){
+      all += '--- TO: ' + guest.email + ' ---\n';
+      all += 'Subject: Your Agora Gala 2026 Recap\n\n';
+      all += generateEmailText(guest, allData.event_stats);
+      all += '\n\n\n';
+    });
+    navigator.clipboard.writeText(all).then(function(){
+      toast('Copied all ' + allData.guests.length + ' emails');
+    });
+  });
+
+  // Expand/collapse all
+  document.getElementById('btnExpandAll').addEventListener('click', function(){
+    expanded = !expanded;
+    document.querySelectorAll('.email-card').forEach(function(c){
+      if(expanded) c.classList.add('open');
+      else c.classList.remove('open');
+    });
+    this.textContent = expanded ? 'Collapse all' : 'Expand all';
+  });
+
+  // Filter
+  document.getElementById('filterRole').addEventListener('change', function(){
+    renderCards(this.value);
+  });
+
+  // Fetch data
+  fetch('/api/wrapped?token=' + token)
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      allData = data;
+      renderCards('all');
+    })
+    .catch(function(){
+      document.getElementById('cardList').innerHTML = '<div class="empty">Failed to load data. Check your admin token.</div>';
+    });
+
+})();
+</script>
+</body>
+</html>
