@@ -11,7 +11,7 @@ const server = http.createServer(app);
 
 // --- Config ---
 const PORT = process.env.PORT || 3000;
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'change_me_before_deploy';
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'spoke-gala-2026';
 const DATABASE_PATH = process.env.DATABASE_PATH || './data/gala.db';
 
 // --- Ensure data directory exists ---
