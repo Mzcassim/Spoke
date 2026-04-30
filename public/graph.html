@@ -62,7 +62,7 @@ body.light .name-label{color:rgba(26,26,26,0.85)}
   });
 
   // --- Config ---
-  var TOTAL_WRISTBANDS = 50;
+  var TOTAL_WRISTBANDS = 200;
   var PADDING = 80;
   var NODE_RADIUS = 10;
   var width = window.innerWidth;
@@ -298,7 +298,12 @@ body.light .name-label{color:rgba(26,26,26,0.85)}
   // --- Activate ghost node ---
   function activateNode(wristbandId, name, role) {
     var node = nodesMap[wristbandId];
-    if (!node) return;
+    if (!node) {
+      node = { id: wristbandId, name: null, role: null, ghost: true,
+        gx: width / 2 + (Math.random() - 0.5) * 400,
+        gy: height / 2 + (Math.random() - 0.5) * 300 };
+      nodesMap[wristbandId] = node;
+    }
     if (registeredSet.has(wristbandId)) return;
     registeredSet.add(wristbandId);
 
@@ -448,7 +453,13 @@ body.light .name-label{color:rgba(26,26,26,0.85)}
       // Activate registered nodes (no animation on load)
       data.nodes.forEach(function(n){
         var node = nodesMap[n.wristband_id];
-        if (!node || registeredSet.has(n.wristband_id)) return;
+        if (!node) {
+          node = { id: n.wristband_id, name: null, role: null, ghost: true,
+            gx: width / 2 + (Math.random() - 0.5) * 400,
+            gy: height / 2 + (Math.random() - 0.5) * 300 };
+          nodesMap[n.wristband_id] = node;
+        }
+        if (registeredSet.has(n.wristband_id)) return;
         registeredSet.add(n.wristband_id);
         node.name = n.name;
         node.role = n.role;
