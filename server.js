@@ -9,6 +9,17 @@ const Database = require('better-sqlite3');
 const app = express();
 const server = http.createServer(app);
 
+// --- Cookie helper ---
+function parseCookies(req) {
+  const obj = {};
+  const str = req.headers.cookie || '';
+  str.split(';').forEach(pair => {
+    const [k, ...v] = pair.trim().split('=');
+    if (k) obj[k] = v.join('=');
+  });
+  return obj;
+}
+
 // --- Config ---
 const PORT = process.env.PORT || 3000;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'spoke-gala-2026';
@@ -130,17 +141,21 @@ function requireAdmin(req, res) {
 app.get('/tap', (req, res) => {
   const wristbandId = req.query.id;
   if (!wristbandId) return res.status(400).send('Missing wristband ID');
+  const cookies = parseCookies(req);
+  const myId = cookies.my_wristband_id || '';
   const tapHtmlPath = path.join(__dirname, 'public', 'tap.html');
   let html = fs.readFileSync(tapHtmlPath, 'utf8');
-  html = html.replace('__WRISTBAND_ID__', wristbandId);
+  html = html.replace('__WRISTBAND_ID__', wristbandId).replace('__MY_ID__', myId);
   res.send(html);
 });
 
 app.get('/tap/:wristband_id', (req, res) => {
   const wristbandId = req.params.wristband_id;
+  const cookies = parseCookies(req);
+  const myId = cookies.my_wristband_id || '';
   const tapHtmlPath = path.join(__dirname, 'public', 'tap.html');
   let html = fs.readFileSync(tapHtmlPath, 'utf8');
-  html = html.replace('__WRISTBAND_ID__', wristbandId);
+  html = html.replace('__WRISTBAND_ID__', wristbandId).replace('__MY_ID__', myId);
   res.send(html);
 });
 
@@ -202,6 +217,7 @@ app.post('/api/register', (req, res) => {
   const guest = { wristband_id, name: name.trim(), role };
   broadcast({ type: 'new_guest', guest });
 
+  res.setHeader('Set-Cookie', `my_wristband_id=${wristband_id};Path=/;Max-Age=31536000;SameSite=Lax`);
   res.json({ success: true, name: name.trim() });
 });
 

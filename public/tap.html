@@ -21,7 +21,7 @@ p{font-size:16px;color:#999;margin-bottom:8px}
 .loading{font-size:14px;color:#666}
 </style>
 </head>
-<body data-wristband-id="__WRISTBAND_ID__">
+<body data-wristband-id="__WRISTBAND_ID__" data-my-id="__MY_ID__">
 <div class="container" id="content">
   <p class="loading">Connecting…</p>
 </div>
@@ -30,15 +30,15 @@ p{font-size:16px;color:#999;margin-bottom:8px}
   var wristbandId = document.body.getAttribute('data-wristband-id');
   var container = document.getElementById('content');
 
-  // Read my_wristband_id from localStorage OR cookie (iOS NFC fallback)
+  // Primary: server-injected from cookie. Fallbacks: localStorage, JS cookie read.
   function getMyId() {
-    var id = null;
+    var id = document.body.getAttribute('data-my-id');
+    if (id) return id;
     try { id = localStorage.getItem('my_wristband_id'); } catch(e) {}
-    if (!id) {
-      var m = document.cookie.match(/(?:^|;\s*)my_wristband_id=([^;]+)/);
-      if (m) id = m[1];
-    }
-    return id;
+    if (id) return id;
+    var m = document.cookie.match(/(?:^|;\s*)my_wristband_id=([^;]+)/);
+    if (m) return m[1];
+    return null;
   }
   var myId = getMyId();
 
